@@ -7,33 +7,40 @@
 	This is the acme_pci driver
 */
 
+//#include <linux/types.h>
+//#include <linux/moduleparam.h>
+//#include <linux/kernel.h>
+//#include <linux/init.h>
+//#include <linux/kdev_t.h>
+//#include <linux/slab.h>
+//#include <linux/device.h>	
+//#include <linux/errno.h>	
+
 #include <linux/pci.h>
-#include <linux/netdevice.h>
 #include <linux/module.h>
-#include <linux/types.h>
-#include <linux/moduleparam.h>
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/kdev_t.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
-#include <linux/slab.h>
-#include <linux/device.h>	
-#include <linux/errno.h>	
 #include <asm/uaccess.h>	
 
 #define DEVCOUNT			1
 #define DEVNAME				"acme"
-//#define SYSCALL_VAL		40
-
-struct acme_dev{
-	struct cdev cdev;				
-//	int syscall_val;
-	resource_size_t bar;
-} *acme_devp;
 
 ssize_t acme_read(struct file *,char __user *buff,size_t,loff_t *);
 ssize_t acme_write(struct file *,const char __user *buff,size_t,loff_t *);
+
+static dev_t acme_dev_number;
+static struct class *acme_class;
+
+struct pci_hw{
+	void __iomem *hw_addr;
+	void __iomem *led_ctl;
+};
+
+struct acme_dev{
+	struct cdev cdev;				
+	struct pci_hw hw;
+	u32 led_ctl;
+} *acme_devp;
 
 static struct file_operations acme_fops = {
 	.owner = THIS_MODULE,
@@ -41,28 +48,8 @@ static struct file_operations acme_fops = {
 	.write = acme_write,
 };
 
-static dev_t acme_dev_number;
-static struct class *acme_class;
-//static int syscall_val=SYSCALL_VAL;
-//static resource_size bar=BAR;
-
-struct pci_hw{
-//	struct acme_pci_adapter *adapter;
-	void __iomem *hw_addr;
-};
-
-struct acme_pci_adapter{
-	struct pci_hw hw;
-//	struct *netdev;
-//	struct *pdev;
-};
-
-static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
-{
-	
+static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent){
 	int bars, err;
-//	struct net_device *netdev;
-	struct acme_pci_adapter *adapter;
 	resource_size_t mmio_start, mmio_len;
 
 	printk(KERN_INFO "It's dangerous to go alone, take this with you.\n");
@@ -70,7 +57,6 @@ static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	err=pci_enable_device_mem(pdev);
 	if(err)return err;
 
-	//	netdev=alloc_etherdev(sizeof(struct prv_data));
 	bars=pci_select_bars(pdev, IORESOURCE_MEM);
 	
 	err=pci_request_selected_regions(pdev,bars,"acme_pci");
@@ -80,8 +66,8 @@ static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	
 	mmio_start = pci_resource_start(pdev, 0);
 	mmio_len = pci_resource_len(pdev, 0);
-	adapter->hw.hw_addr = ioremap(mmio_start, mmio_len);
-
+	acme_devp->hw.hw_addr = ioremap(mmio_start, mmio_len);
+	acme_devp->hw.led_ctl=acme_devp->hw.hw_addr+0x00E00; 
 err_pci_reg:
 	pci_disable_device(pdev);
 	return 0;
@@ -121,7 +107,6 @@ static int __init amce_pci_init(void){
 	}
 	
 	cdev_init(&acme_devp->cdev,&acme_fops);
-	acme_devp->syscall_val=syscall_val;
 	
 	if(cdev_add(&acme_devp->cdev,acme_dev_number,DEVCOUNT)){
 		printk(KERN_NOTICE "cdev_add() failed");
@@ -153,7 +138,9 @@ ssize_t acme_read(struct file *filp,char __user *buf,size_t len,loff_t *offset){
 		ret = -EINVAL;
 		goto out;
 	}
-	if(copy_to_user(buf,&acme_devp->syscall_val,sizeof(int))){
+		
+	acme_devp->led_ctl = readl(&acme_devp->hw.led_ctl);
+	if(copy_to_user(buf,&acme_devp->led_ctl,sizeof(u32))){
 		ret = -EFAULT;
 		goto out;
 	}
@@ -169,8 +156,12 @@ ssize_t acme_write(struct file *filp,const char __user *buf,size_t len,loff_t *o
 		ret = -EINVAL;
 		goto out;
 	}
-
-	if(copy_from_user(&acme_devp->syscall_val,buf,len)){
+	
+// 	u32 led_ctl = readl(&acme_devp->hw.led_ctl);
+//	if(copy_to_user(buf,(u32 *)led_ctl,sizef(u32))){
+	
+	acme_devp->led_ctl = readl(&acme_devp->hw.led_ctl);
+	if(copy_from_user(&acme_devp->led_ctl,buf,len)){
 		ret = -EFAULT;
 		goto out;
 	}
