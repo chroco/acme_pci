@@ -33,7 +33,7 @@ static struct class *acme_class;
 
 struct pci_hw{
 	void __iomem *hw_addr;
-	void __iomem *led_ctl;
+	void __iomem *led_addr;
 };
 
 struct acme_dev{
@@ -67,7 +67,7 @@ static int amce_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	mmio_start = pci_resource_start(pdev, 0);
 	mmio_len = pci_resource_len(pdev, 0);
 	acme_devp->hw.hw_addr = ioremap(mmio_start, mmio_len);
-	acme_devp->hw.led_ctl=acme_devp->hw.hw_addr+0x00E00; 
+	acme_devp->hw.led_addr=acme_devp->hw.hw_addr+0x00E00; 
 err_pci_reg:
 	pci_disable_device(pdev);
 	return 0;
@@ -139,7 +139,8 @@ ssize_t acme_read(struct file *filp,char __user *buf,size_t len,loff_t *offset){
 		goto out;
 	}
 		
-	acme_devp->led_ctl = readl(&acme_devp->hw.led_ctl);
+	acme_devp->led_ctl = readl(acme_devp->hw.led_addr);
+//	printk("read 0x%02x from 0x%08x\n",acme_devp->led_ctl,acme_devp->hw.led_addr);
 	if(copy_to_user(buf,&acme_devp->led_ctl,sizeof(u32))){
 		ret = -EFAULT;
 		goto out;
@@ -156,15 +157,13 @@ ssize_t acme_write(struct file *filp,const char __user *buf,size_t len,loff_t *o
 		ret = -EINVAL;
 		goto out;
 	}
-	
-// 	u32 led_ctl = readl(&acme_devp->hw.led_ctl);
-//	if(copy_to_user(buf,(u32 *)led_ctl,sizef(u32))){
-	
-	acme_devp->led_ctl = readl(&acme_devp->hw.led_ctl);
+
 	if(copy_from_user(&acme_devp->led_ctl,buf,len)){
 		ret = -EFAULT;
 		goto out;
 	}
+	writel(acme_devp->led_ctl,acme_devp->hw.led_addr);
+//	printk("wrote 0x%02x to 0x%08x\n",acme_devp->led_ctl,acme_devp->hw.led_addr);
 	ret = len;
 out:
 	return ret;

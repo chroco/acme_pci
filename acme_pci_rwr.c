@@ -35,10 +35,11 @@ int main(int argc, char *argv[]){
 		case 2:
 			val=atoi(argv[argc-1]);
 			switch(val){
-				case 0:val=0x4E;break;
+				case 0:val=0x0F;break;
 				case 1:val=0x4E;break;
 				default: return acme_error(fd);		 
 			}
+			fprintf(stderr,"**0x%08x**\n",val);
 			return writer(fd,val,file);
 		default: return acme_error(fd);		 
 	}
